@@ -16,7 +16,7 @@ const std::array<std::string, 5> FAN_CHARACTERISTIC_UUID = {
 };
 
 const std::string LED_SERVICE_UUID;
-const std::array<std::string, 1> LED_CHARACTERISTIC_UUID	 = {
+const std::array<std::string, 1> LED_CHARACTERISTIC_UUID = {
 };
 
 BLEServer* pServer = nullptr;
@@ -41,7 +41,7 @@ void setup() {
 	pLedService = pServer->createService(LED_SERVICE_UUID);
 
 	// Create Characteristics inside the Service
-	for (int i=0; i<FAN_CHARACTERISTIC_UUID->size(); ++i) {
+	for (int i=0; i<FAN_CHARACTERISTIC_UUID.size(); ++i) {
 		pFanCharacteristics[i] = pFanService->createCharacteristic(
 			FAN_CHARACTERISTIC_UUID[i],
 			BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
@@ -50,7 +50,7 @@ void setup() {
 		pFanCharacteristics[i]->setValue("0");
 	}
 
-	for (int i=0; i<LED_CHARACTERISTIC_UUID->size(); ++i) {
+	for (int i=0; i<LED_CHARACTERISTIC_UUID.size(); ++i) {
 		pLedCharacteristics[i] = pLedService->createCharacteristic(
 			LED_CHARACTERISTIC_UUID[i],
 			BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
