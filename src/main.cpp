@@ -49,7 +49,7 @@ Adafruit_NeoPixel ledStrip2(18, 23, NEO_GRB + NEO_KHZ800);
 
 const std::string LED_SERVICE_UUID = "56956ce8-6d0d-4919-8016-8ba7ea56b350";
 std::array<LedSettings, 2> LED_CHARACTERISTIC_UUID = {{
-	{"5952eae5-f5da-4be1-adad-795a663c3aec", 22, 18, ledStrip1, {{0xFF0000, 0x00FF00, 0x0000FF},{0xFFFF00, 0xFF00FF, 0x00FFFF}}, 1.0, 300},
+	{"5952eae5-f5da-4be1-adad-795a663c3aec", 22, 18, ledStrip1, {{0xFF0000, 0x0F00FF, 0xFF0000},{0xFFFF00, 0xFF00FF, 0x00FFFF}}, 1.0, 300},
 	{"f0e2c120-01f6-4fc6-982d-de2c45b1623d", 23, 18, ledStrip2, {{0xFF0000, 0x00FF00, 0x0000FF},{0xFFFF00, 0xFF00FF, 0x00FFFF}}, 1.0, 300}
 }};
 
@@ -60,6 +60,15 @@ BLECharacteristic* pFanCharacteristics[5];
 
 BLEService* pLedService = nullptr;
 BLECharacteristic* pLedCharacteristics[9];
+
+// Fan setup
+// List of GPIO pins
+const int pwmPins[] = {16,17,5,18,19}; // GPIO pins for fans
+const int numPins = sizeof(pwmPins) / sizeof(pwmPins[0]);
+
+// PWM settings
+const int freq = 25000;        // 25 kHz
+const int resolution = 8;     // 8-bit resolution (0–255)
 
 // Handles Fan characteristic write events
 class FanCharacteristicCallback : public BLECharacteristicCallbacks {
@@ -302,8 +311,16 @@ void setup() {
 	Serial.println("BLE Service started, waiting for clients to connect...");
 
 	initFirstFrame();
-}
 
+	for (int i = 0; i < numPins; i++) {
+        int channel = i; // Assign a unique channel per pin
+        ledcSetup(channel, freq, resolution);              // Configure PWM
+        ledcAttachPin(pwmPins[i], channel);                // Attach pin to channel
+        ledcWrite(channel, 255);                           // 100% duty cycle
+    }
+}
+const int maxDuty = 255; // 100%
+const int delayMs = 10;  // Delay between steps
 void loop() {
 	for (LedSettings& ledAnimation : LED_CHARACTERISTIC_UUID) {
 		// unsigned int thisFrameIndex =(millis() / ledAnimation.animationDelay) % ledAnimation.animation.size();
@@ -314,8 +331,24 @@ void loop() {
 
 		for (int i = 0; i < ledAnimation.stripLength; ++i) {
 			uint32_t color = ledAnimation.lastAnimation[i];
-			ledAnimation.strip.setPixelColor(i, color);
+			// Apply brightness multiplier and cap each color channel at 0xFF
+			uint8_t r = std::min(255, int(((color >> 16) & 0xFF) * ledAnimation.brightness));
+			uint8_t g = std::min(255, int(((color >> 8) & 0xFF) * ledAnimation.brightness));
+			uint8_t b = std::min(255, int((color & 0xFF) * ledAnimation.brightness));
+			ledAnimation.strip.setPixelColor(i, r, g, b);
 		}
 		ledAnimation.strip.show();
+	}
+
+	// Ramp up from 0 to 255
+    delay(3000);
+	for(int i=0;i< numPins; ++i) {
+		int channel = i; // Assign a unique channel per pin
+		ledcWrite(channel, 128); // Start with 0% duty cycle
+	}
+	delay(3000);
+	for(int i=0;i< numPins; ++i) {
+		int channel = i; // Assign a unique channel per pin
+		ledcWrite(channel, 255); // Start with 0% duty cycle
 	}
 }
