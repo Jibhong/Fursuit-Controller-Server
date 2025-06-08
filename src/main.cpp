@@ -349,7 +349,7 @@ void loop() {
 		double frameStep = (double(now % ledAnimation.animationDelay)) / ledAnimation.animationDelay;
 
 		if(frameIndex != ledAnimation.lastFrameIndex){
-			ledAnimation.lastFrameIndex = (frameIndex + 1) % frameCount;
+			ledAnimation.lastFrameIndex = frameIndex;
 			lerpLedPoint(ledAnimation,ledAnimation.lastAnimation,ledAnimation.lastFrameIndex);
 			lerpLedPoint(ledAnimation,ledAnimation.nextAnimation,(ledAnimation.lastFrameIndex + 1) % frameCount);
 		}
