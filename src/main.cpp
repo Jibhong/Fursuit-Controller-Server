@@ -55,8 +55,8 @@ Adafruit_NeoPixel ledStrip2(18, 23, NEO_GRB + NEO_KHZ800);
 
 const std::string LED_SERVICE_UUID = "56956ce8-6d0d-4919-8016-8ba7ea56b350";
 std::array<LedSettings, 2> LED_CHARACTERISTIC_UUID = {{
-	{"5952eae5-f5da-4be1-adad-795a663c3aec", 22, 18, ledStrip1, {{{{0.0,0.0},{0.25,0.75},{0.0,1.0}},{0xFF0000, 0x00FF00, 0x0000FF}}}, 0.2, 300, 1000},
-	{"f0e2c120-01f6-4fc6-982d-de2c45b1623d", 23, 18, ledStrip2, {{{{0.0,0.05},{0.95,1.0}},{0x005050}}}, 0.2, 300, 1000}
+	{"5952eae5-f5da-4be1-adad-795a663c3aec", 22, 18, ledStrip1, {{{{0.25,0.75},{0.5,0.55},{0.25,0.75}},{0xFF0000,0xFF7000,0xFF0000}}}, 0.2, 300, 1000},
+	{"f0e2c120-01f6-4fc6-982d-de2c45b1623d", 23, 18, ledStrip2, {{{{0.0,0.05},{0.95,1.0}},{0x00FFFF}},{{{0.95,1.0},{0.0,0.05}},{0xFFFF00}}}, 0.2, 300, 1000}
 }};
 
 BLEServer* pServer = nullptr;
@@ -146,19 +146,19 @@ uint32_t gammaInterpolationColor(uint32_t colorA, uint32_t colorB, double t) {
 }
 
 uint32_t addRGB(uint32_t colorA, uint32_t colorB) {
-	uint8_t rA = (colorA >> 16) & 0xFF;
-	uint8_t gA = (colorA >> 8) & 0xFF;
-	uint8_t bA = colorA & 0xFF;
+    uint8_t rA = (colorA >> 16) & 0xFF;
+    uint8_t gA = (colorA >> 8) & 0xFF;
+    uint8_t bA = colorA & 0xFF;
 
-	uint8_t rB = (colorB >> 16) & 0xFF;
-	uint8_t gB = (colorB >> 8) & 0xFF;
-	uint8_t bB = colorB & 0xFF;
+    uint8_t rB = (colorB >> 16) & 0xFF;
+    uint8_t gB = (colorB >> 8) & 0xFF;
+    uint8_t bB = colorB & 0xFF;
 
-	uint8_t r = std::max(rA , rB);
-	uint8_t g = std::max(gA , gB);
-	uint8_t b = std::max(bA , bB);
+    uint8_t r = std::max(rA, rB);
+    uint8_t g = std::max(gA, gB);
+    uint8_t b = std::max(bA, bB);
 
-	return (r << 16) | (g << 8) | b;
+    return (uint32_t(r) << 16) | (uint32_t(g) << 8) | b;
 }
 
 void generateFrame(LedSettings &led, float t) {
@@ -394,7 +394,12 @@ void loop() {
     unsigned long now = millis();
     for (LedSettings &led : LED_CHARACTERISTIC_UUID) {
 		// generateFrame(led, 0.5);
-		generateFrame(led, ( ((float)(now)) / ((float)(led.animationDuration+led.animationDelay)) ) - ( (int)(now/(led.animationDuration+led.animationDelay)) ) );
+		// Calculate the total cycle duration (animation + delay)
+		unsigned long cycleDuration = led.animationDuration + led.animationDelay;
+		unsigned long cycleTime = now % cycleDuration;
+		float t = 0.0;
+		if (cycleTime < led.animationDuration) t = (float)cycleTime / (float)led.animationDuration;
+		generateFrame(led, t);
 		for (int i = 0; i < led.stripLength && i < led.nowFrame.size(); ++i) {
 			uint32_t color = led.nowFrame[i];
 			// Extract RGB components
