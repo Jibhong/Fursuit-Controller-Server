@@ -33,7 +33,7 @@ typedef struct led_settings {
 	std::vector<AnimationContainer> animation;
 	float brightness; //brightness multiplier (0.0-3.0)
 	int animationDuration; //total duration of the animation in milliseconds
-	int animationDelay; //delay between animation frames in milliseconds
+	float animationDelay; //delay between animation frames in milliseconds
 
 	std::vector<uint32_t> nowFrame;
 	unsigned int microFrameDelay;
@@ -55,8 +55,8 @@ Adafruit_NeoPixel ledStrip2(18, 23, NEO_GRB + NEO_KHZ800);
 
 const std::string LED_SERVICE_UUID = "56956ce8-6d0d-4919-8016-8ba7ea56b350";
 std::array<LedSettings, 2> LED_CHARACTERISTIC_UUID = {{
-	{"5952eae5-f5da-4be1-adad-795a663c3aec", 22, 18, ledStrip1, {{{{0.0,1.0},{0.0,0.0}},{0xFF0000, 0x00FF00, 0x0000FF}}}, 1.0, 300, 1000},
-	{"f0e2c120-01f6-4fc6-982d-de2c45b1623d", 23, 18, ledStrip2, {}, 1.0, 300, 1000}
+	{"5952eae5-f5da-4be1-adad-795a663c3aec", 22, 18, ledStrip1, {{{{0.0,0.0},{0.25,0.75},{0.0,1.0}},{0xFF0000, 0x00FF00, 0x0000FF}}}, 0.2, 300, 1000},
+	{"f0e2c120-01f6-4fc6-982d-de2c45b1623d", 23, 18, ledStrip2, {{{{0.0,0.1},{0.9,1.0}},{0x005050}}}, 0.2, 300, 1000}
 }};
 
 BLEServer* pServer = nullptr;
@@ -99,7 +99,7 @@ public:
 	}
 };
 
-float lerp(int a, int b, float t) {
+float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
@@ -120,7 +120,7 @@ uint32_t linearInterpolationColor(uint32_t color1, uint32_t color2, double t) {
 }
 
 uint32_t gammaInterpolationColor(uint32_t colorA, uint32_t colorB, double t) {
-	const double gamma = 0.2; // try 1.2 or 1.0 if needed
+	const double gamma = 1.2; // try 1.2 or 1.0 if needed
 
 	auto toLinear = [gamma](int c) -> double {
 		return pow(c / 255.0, gamma);
@@ -145,30 +145,50 @@ uint32_t gammaInterpolationColor(uint32_t colorA, uint32_t colorB, double t) {
 	return (toSRGB(r) << 16) | (toSRGB(g) << 8) | toSRGB(b);
 }
 
+uint32_t addRGB(uint32_t colorA, uint32_t colorB) {
+	uint8_t rA = (colorA >> 16) & 0xFF;
+	uint8_t gA = (colorA >> 8) & 0xFF;
+	uint8_t bA = colorA & 0xFF;
+
+	uint8_t rB = (colorB >> 16) & 0xFF;
+	uint8_t gB = (colorB >> 8) & 0xFF;
+	uint8_t bB = colorB & 0xFF;
+
+	uint8_t r = std::max(rA , rB);
+	uint8_t g = std::max(gA , gB);
+	uint8_t b = std::max(bA , bB);
+
+	return (r << 16) | (g << 8) | b;
+}
+
 void generateFrame(LedSettings &led, float t) {
-	led.nowFrame.clear();
+	led.nowFrame.clear(); // Clear the nowFrame vector
+	led.nowFrame.resize(led.stripLength, 0x000000); // Initialize the frame with black color
 	for(AnimationContainer &toFill:led.animation){
-		int nowIndex = (toFill.keyFrame.size()-1) * t;
+		int nowIndex = (float)(toFill.keyFrame.size()-1) * t;
+		// Serial.println(String("Now Index: ") + String(nowIndex) + " t: " + String(t) + " keyFrame size: " + String(toFill.keyFrame.size()));
 		float nowPercent = t*(float)(toFill.keyFrame.size()-1) - nowIndex;
-		float p1 = lerp(toFill.keyFrame[nowIndex].first, toFill.keyFrame[nowIndex+1].first, nowPercent);
-		float p2 = lerp(toFill.keyFrame[nowIndex].second, toFill.keyFrame[nowIndex+1].second, nowPercent);
+		float p1 = lerp(toFill.keyFrame[nowIndex].first, toFill.keyFrame[nowIndex+1].first, nowPercent) * (float)led.stripLength;
+		float p2 = lerp(toFill.keyFrame[nowIndex].second, toFill.keyFrame[nowIndex+1].second, nowPercent) * (float)led.stripLength;
 		//Fill color between p1 and p2
-		float segmentSize = (p2-p1) / (float)toFill.color.size();
+		float segmentSize = (float)abs(p2-p1) / (float)toFill.color.size();
 		for(int ledIndex=ceil(p1); ledIndex<=floor(p2); ++ledIndex) {
-			int ledColorIndex = ((float)ledIndex-ceil(p1)) / segmentSize;
-			float ledColorPercent = ( ((float)ledIndex-ceil(p1)) / segmentSize) - ledColorIndex;
-			led.nowFrame[ledIndex] = gammaInterpolationColor(toFill.color[ledColorIndex], toFill.color[min(ledColorIndex+1,(int)toFill.color.size())], ledColorPercent);
+			// Serial.println(String("LED Index: ") + String(ledIndex) + " p1: " + String(p1) + " p2: " + String(p2) + " segmentSize: " + String(segmentSize));
+			int ledColorIndex = ((float)ledIndex-p1) / segmentSize;
+			float ledColorPercent = ( ((float)ledIndex-p1) / segmentSize) - ledColorIndex;
+			led.nowFrame[ledIndex] = gammaInterpolationColor(toFill.color[ledColorIndex], toFill.color[min(ledColorIndex+1,(int)toFill.color.size()-1)], ledColorPercent);
+			// led.nowFrame[ledIndex] 	= 0x00FF00;
 		}
 		//Fill edge of p1 and p2
 		for(int ledIndex=ceil(p2); ledIndex<=floor(p2+segmentSize); ++ledIndex) {
-			if(ledIndex >= led.stripLength) break;
+			int realIndex = ledIndex%led.stripLength;
 			float ledColorPercent = ( ((float)ledIndex-p2) / segmentSize);
-			led.nowFrame[ledIndex] = gammaInterpolationColor(toFill.color[toFill.color.size()-1], 0x000000, ledColorPercent);
+			led.nowFrame[realIndex] = addRGB(led.nowFrame[realIndex], gammaInterpolationColor(toFill.color[toFill.color.size()-1], 0x000000, ledColorPercent));
 		}
 		for(int ledIndex=floor(p1); ledIndex>=floor(p1-segmentSize); --ledIndex) {
-			if(ledIndex < 0) break;
+			int realIndex = (ledIndex+led.stripLength)%led.stripLength;
 			float ledColorPercent = ( ((float)ledIndex-p1+segmentSize) / segmentSize);
-			led.nowFrame[ledIndex] = gammaInterpolationColor(0x000000, toFill.color[0], ledColorPercent);
+			led.nowFrame[realIndex] = addRGB(led.nowFrame[realIndex], gammaInterpolationColor(0x000000, toFill.color[0], ledColorPercent));
 		}
 	}
 }
@@ -214,39 +234,38 @@ public:
 			return;
 		}
 
-		// Parse animation array (hex color strings)
-		if (inputJson["animation"].is<JsonArray>()) {
-			LED_CHARACTERISTIC_UUID[uuidIndex].animation.clear();
-			for (JsonVariant frameVar : inputJson["animation"].as<JsonArray>()) {
-				std::vector<uint32_t> frame;
-				if (frameVar.is<JsonArray>()) {
-					for (JsonVariant colorVar : frameVar.as<JsonArray>()) {
-						if (colorVar.is<const char*>()) {
-							std::string colorStr = colorVar.as<const char*>();
-							if (colorStr.size() == 6) {
-								uint32_t color = (uint32_t)strtoul(colorStr.c_str(), nullptr, 16);
-								frame.push_back(color);
-							}
-						}
+		// {animation:[channel:0, keyFrame:[[0.0,1.0],[0,5,1.0],[0.0,0.5]]]}
+		// {animation:[channel:0, color:["ff0000", "00ff00", "0000ff"]]}
+		// Parse animation array (channel is inside animation object)
+		if (inputJson["animation"].is<JsonObject>()) {
+			JsonObject animationObj = inputJson["animation"].as<JsonObject>();
+			int channelIndex = 0;
+			if (!animationObj["channel"].is<int>()) channelIndex = animationObj["channel"].as<int>();
+			if (animationObj["keyFrame"].is<JsonArray>()) {
+				JsonArray keyFrameInput = animationObj["keyFrame"].as<JsonArray>();
+				std::vector<std::pair<float, float>> &ledColor = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].keyFrame;
+				ledColor.clear();
+				for (JsonArray kf : keyFrameInput) {
+					if (kf.size() != 2) continue;
+					float first = kf[0].as<float>();
+					float second = kf[1].as<float>();
+					ledColor.emplace_back(first, second);
+				}
+			}
+			if (animationObj["color"].is<JsonArray>()) {
+				JsonArray colorInput = animationObj["color"].as<JsonArray>();
+				std::vector<uint32_t> &ledColor = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].color;
+				ledColor.clear();
+					for (JsonVariant v : colorInput) {
+						std::string colorStr = v.as<const char*>();
+						// Convert hex string to uint32_t
+						uint32_t color = (uint32_t)strtol(colorStr.c_str(), nullptr, 16);
+						ledColor.push_back(color);
+						Serial.print(ledColor.back(), HEX);
+						Serial.print(" ");
 					}
-				}
-				if (!frame.empty()) {
-					LED_CHARACTERISTIC_UUID[uuidIndex].animation.push_back(frame);
-				}
+					Serial.println();
 			}
-			Serial.print("LED Animation: ");
-			for (const auto& frame : LED_CHARACTERISTIC_UUID[uuidIndex].animation) {
-				Serial.print("[");
-				for (const auto& color : frame) {
-					Serial.print("#");
-					char buf[7];
-					snprintf(buf, sizeof(buf), "%06X", color);
-					Serial.print(buf);
-					Serial.print(" ");
-				}
-				Serial.print("] ");
-			}
-			Serial.println();
 		}
 
 		// Parse brightness
@@ -363,7 +382,6 @@ void setup() {
 		// fillStripWithPoint(LED_CHARACTERISTIC_UUID[i],LED_CHARACTERISTIC_UUID[i].lastAnimation,LED_CHARACTERISTIC_UUID[i].lastFrameIndex);
 		// fillStripWithPoint(LED_CHARACTERISTIC_UUID[i],LED_CHARACTERISTIC_UUID[i].nextAnimation,(LED_CHARACTERISTIC_UUID[i].lastFrameIndex + 1) % (LED_CHARACTERISTIC_UUID[i].animation.size()));
 		// generateFrame(LED_CHARACTERISTIC_UUID[i],3);
-		led.nowFrame.resize(led.stripLength, 0);
 	}
 
 }
@@ -371,9 +389,19 @@ void setup() {
 void loop() {
     unsigned long now = millis();
     for (LedSettings &led : LED_CHARACTERISTIC_UUID) {
-		generateFrame(led, ( ((float)(now)) / ((float)(led.animationDuration+led.animationDelay)) ) - ( (float)(now/(led.animationDuration+led.animationDelay)) ) );
+		// generateFrame(led, 0.5);
+		generateFrame(led, ( ((float)(now)) / ((float)(led.animationDuration+led.animationDelay)) ) - ( (int)(now/(led.animationDuration+led.animationDelay)) ) );
 		for (int i = 0; i < led.stripLength && i < led.nowFrame.size(); ++i) {
-			led.strip.setPixelColor(i, led.nowFrame[i]);
+			uint32_t color = led.nowFrame[i];
+			// Extract RGB components
+			uint8_t r = (color >> 16) & 0xFF;
+			uint8_t g = (color >> 8) & 0xFF;
+			uint8_t b = color & 0xFF;
+			float brightness = std::min(led.brightness, 1.0f);
+			r = static_cast<uint8_t>(r * brightness);
+			g = static_cast<uint8_t>(g * brightness);
+			b = static_cast<uint8_t>(b * brightness);
+			led.strip.setPixelColor(i, r, g, b);
 		}
         led.strip.show();
     }
