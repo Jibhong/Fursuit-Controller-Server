@@ -283,6 +283,12 @@ public:
 			LED_CHARACTERISTIC_UUID[uuidIndex].animationDelay = inputJson["delay"].as<int>();
 			Serial.println("LED Animation Delay: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].animationDelay));
 		}
+
+		// Phrase animation duration
+		if (inputJson["duration"].is<int>()) {
+			LED_CHARACTERISTIC_UUID[uuidIndex].animationDuration = inputJson["duration"].as<int>();
+			Serial.println("LED Animation Duration: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].animationDuration));
+		}
     }
 };
 
