@@ -56,7 +56,7 @@ Adafruit_NeoPixel ledStrip2(18, 23, NEO_GRB + NEO_KHZ800);
 const std::string LED_SERVICE_UUID = "56956ce8-6d0d-4919-8016-8ba7ea56b350";
 std::array<LedSettings, 2> LED_CHARACTERISTIC_UUID = {{
 	{"5952eae5-f5da-4be1-adad-795a663c3aec", 22, 18, ledStrip1, {{{{0.0,0.0},{0.25,0.75},{0.0,1.0}},{0xFF0000, 0x00FF00, 0x0000FF}}}, 0.2, 300, 1000},
-	{"f0e2c120-01f6-4fc6-982d-de2c45b1623d", 23, 18, ledStrip2, {{{{0.0,0.1},{0.9,1.0}},{0x005050}}}, 0.2, 300, 1000}
+	{"f0e2c120-01f6-4fc6-982d-de2c45b1623d", 23, 18, ledStrip2, {{{{0.0,0.05},{0.95,1.0}},{0x005050}}}, 0.2, 300, 1000}
 }};
 
 BLEServer* pServer = nullptr;
@@ -241,30 +241,34 @@ public:
 			JsonObject animationObj = inputJson["animation"].as<JsonObject>();
 			int channelIndex = 0;
 			if (!animationObj["channel"].is<int>()) channelIndex = animationObj["channel"].as<int>();
-			if (animationObj["keyFrame"].is<JsonArray>()) {
-				JsonArray keyFrameInput = animationObj["keyFrame"].as<JsonArray>();
-				std::vector<std::pair<float, float>> &ledColor = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].keyFrame;
-				ledColor.clear();
-				for (JsonArray kf : keyFrameInput) {
+			Serial.println("channel: " + String(channelIndex));
+			if (animationObj["keyframe"].is<JsonArray>()) {
+				Serial.println("keyframe found");
+				JsonArray jsonInput = animationObj["keyframe"].as<JsonArray>();
+				std::vector<std::pair<float, float>> &ledKeyFrame = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].keyFrame;
+				ledKeyFrame.clear();
+				for (JsonArray kf : jsonInput) {
 					if (kf.size() != 2) continue;
 					float first = kf[0].as<float>();
 					float second = kf[1].as<float>();
-					ledColor.emplace_back(first, second);
+					ledKeyFrame.emplace_back(first, second);
+					Serial.print(String(first) + "," + String(second) + " ");
 				}
+				Serial.println();
 			}
 			if (animationObj["color"].is<JsonArray>()) {
-				JsonArray colorInput = animationObj["color"].as<JsonArray>();
+				JsonArray josnInput = animationObj["color"].as<JsonArray>();
 				std::vector<uint32_t> &ledColor = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].color;
 				ledColor.clear();
-					for (JsonVariant v : colorInput) {
-						std::string colorStr = v.as<const char*>();
-						// Convert hex string to uint32_t
-						uint32_t color = (uint32_t)strtol(colorStr.c_str(), nullptr, 16);
-						ledColor.push_back(color);
-						Serial.print(ledColor.back(), HEX);
-						Serial.print(" ");
-					}
-					Serial.println();
+				for (JsonVariant v : josnInput) {
+					std::string colorStr = v.as<const char*>();
+					// Convert hex string to uint32_t
+					uint32_t color = (uint32_t)strtol(colorStr.c_str(), nullptr, 16);
+					ledColor.push_back(color);
+					Serial.print(ledColor.back(), HEX);
+					Serial.print(" ");
+				}
+				Serial.println();
 			}
 		}
 
