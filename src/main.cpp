@@ -91,7 +91,7 @@ public:
 		int fanIndex = 0;
 		for(fanIndex;fanIndex<FAN_CHARACTERISTIC_UUID.size();++fanIndex){
 			if(FAN_CHARACTERISTIC_UUID[fanIndex].uuid!=uuid) continue;
-			FAN_CHARACTERISTIC_UUID[fanIndex].speed = std::min(255, std::max(0, inputSpeed));
+			FAN_CHARACTERISTIC_UUID[fanIndex].speed = std::min(255, std::max(120, inputSpeed));
 			ledcWrite(FAN_CHARACTERISTIC_UUID[fanIndex].pwmChannel, FAN_CHARACTERISTIC_UUID[fanIndex].speed); 
 			break;
 		}
@@ -157,6 +157,10 @@ uint32_t addRGB(uint32_t colorA, uint32_t colorB) {
     uint8_t r = std::max(rA, rB);
     uint8_t g = std::max(gA, gB);
     uint8_t b = std::max(bA, bB);
+
+	// uint8_t r = (rA*rA + rB*rB) / (rA + rB);
+	// uint8_t g = (gA*gA + gB*gB) / (gA + gB);
+	// uint8_t b = (bA*bA + bB*bB) / (bA + bB);
 
     return (uint32_t(r) << 16) | (uint32_t(g) << 8) | b;
 }
