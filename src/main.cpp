@@ -91,7 +91,8 @@ public:
 		int fanIndex = 0;
 		for(fanIndex;fanIndex<FAN_CHARACTERISTIC_UUID.size();++fanIndex){
 			if(FAN_CHARACTERISTIC_UUID[fanIndex].uuid!=uuid) continue;
-			FAN_CHARACTERISTIC_UUID[fanIndex].speed = std::min(255, std::max(120, inputSpeed));
+			if(inputSpeed<120) inputSpeed = 0;
+			FAN_CHARACTERISTIC_UUID[fanIndex].speed = std::min(255, std::max(0, inputSpeed));
 			ledcWrite(FAN_CHARACTERISTIC_UUID[fanIndex].pwmChannel, FAN_CHARACTERISTIC_UUID[fanIndex].speed); 
 			break;
 		}
