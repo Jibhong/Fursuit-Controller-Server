@@ -11,6 +11,11 @@
 
 #include <ArduinoJson.h>
 
+bool debugEnabled = false; // Toggle this to enable/disable printing
+
+#define Print(...)    if (debugEnabled) Serial.print(__VA_ARGS__)
+#define Println(...)  if (debugEnabled) Serial.println(__VA_ARGS__)
+
 typedef struct fan_settings {
 	const std::string uuid;
 	const int pin1;
@@ -84,10 +89,10 @@ public:
 
 		int inputSpeed = static_cast<int>(inputString[0]);
 
-		Serial.print("Fan ");
-		Serial.print(uuid.c_str());
-		Serial.print(": ");
-		Serial.println(inputSpeed);
+		Print("Fan ");
+		Print(uuid.c_str());
+		Print(": ");
+		Println(inputSpeed);
 		int fanIndex = 0;
 		for(fanIndex;fanIndex<FAN_CHARACTERISTIC_UUID.size();++fanIndex){
 			if(FAN_CHARACTERISTIC_UUID[fanIndex].uuid!=uuid) continue;
@@ -171,14 +176,14 @@ void generateFrame(LedSettings &led, float t) {
 	led.nowFrame.resize(led.stripLength, 0x000000); // Initialize the frame with black color
 	for(AnimationContainer &toFill:led.animation){
 		int nowIndex = (float)(toFill.keyFrame.size()-1) * t;
-		// Serial.println(String("Now Index: ") + String(nowIndex) + " t: " + String(t) + " keyFrame size: " + String(toFill.keyFrame.size()));
+		// Println(String("Now Index: ") + String(nowIndex) + " t: " + String(t) + " keyFrame size: " + String(toFill.keyFrame.size()));
 		float nowPercent = t*(float)(toFill.keyFrame.size()-1) - nowIndex;
 		float p1 = lerp(toFill.keyFrame[nowIndex].first, toFill.keyFrame[nowIndex+1].first, nowPercent) * (float)led.stripLength;
 		float p2 = lerp(toFill.keyFrame[nowIndex].second, toFill.keyFrame[nowIndex+1].second, nowPercent) * (float)led.stripLength;
 		//Fill color between p1 and p2
 		float segmentSize = (float)abs(p2-p1) / (float)toFill.color.size();
 		for(int ledIndex=ceil(p1); ledIndex<=floor(p2); ++ledIndex) {
-			// Serial.println(String("LED Index: ") + String(ledIndex) + " p1: " + String(p1) + " p2: " + String(p2) + " segmentSize: " + String(segmentSize));
+			// Println(String("LED Index: ") + String(ledIndex) + " p1: " + String(p1) + " p2: " + String(p2) + " segmentSize: " + String(segmentSize));
 			int ledColorIndex = ((float)ledIndex-p1) / segmentSize;
 			float ledColorPercent = ( ((float)ledIndex-p1) / segmentSize) - ledColorIndex;
 			led.nowFrame[ledIndex] = gammaInterpolationColor(toFill.color[ledColorIndex], toFill.color[min(ledColorIndex+1,(int)toFill.color.size()-1)], ledColorPercent);
@@ -208,14 +213,14 @@ public:
     void onWrite(BLECharacteristic* pCharacteristic) override {
         std::string inputString = pCharacteristic->getValue();
 
-        Serial.print("LED ");
-        Serial.print(uuid.c_str());
-        Serial.print(": ");
+        Print("LED ");
+        Print(uuid.c_str());
+        Print(": ");
 
         for (char c : inputString) {
-            Serial.print(c);
+            Print(c);
         }
-        Serial.println();
+        Println();
 
 		int uuidIndex = -1; // Assuming handle starts from 1
 		for(int i = 0; i < LED_CHARACTERISTIC_UUID.size(); ++i) {
@@ -224,18 +229,18 @@ public:
 			break;
 		}
 		if(uuidIndex == -1) {
-			Serial.println("ERROR: LED Characteristic not found");
+			Println("ERROR: LED Characteristic not found");
 			return;
 		}
-		Serial.println("LED Characteristic Index: " + String(uuidIndex));
+		Println("LED Characteristic Index: " + String(uuidIndex));
 
 		// {animation:{{0xFF0000, 0x00FF00, 0x0000FF},{0xFFFF00, 0xFF00FF, 0x00FFFF}}, brightness: 1.0, delay: 300};
 		// Parse input as JSON and update LED settings
 		JsonDocument inputJson;
 		DeserializationError error = deserializeJson(inputJson, inputString);
 		if (error) {
-			Serial.print("JSON parse failed: ");
-			Serial.println(error.c_str());
+			Print("JSON parse failed: ");
+			Println(error.c_str());
 			return;
 		}
 
@@ -246,9 +251,9 @@ public:
 			JsonObject animationObj = inputJson["animation"].as<JsonObject>();
 			int channelIndex = 0;
 			if (!animationObj["channel"].is<int>()) channelIndex = animationObj["channel"].as<int>();
-			Serial.println("channel: " + String(channelIndex));
+			Println("channel: " + String(channelIndex));
 			if (animationObj["keyframe"].is<JsonArray>()) {
-				Serial.println("keyframe found");
+				Println("keyframe found");
 				JsonArray jsonInput = animationObj["keyframe"].as<JsonArray>();
 				std::vector<std::pair<float, float>> &ledKeyFrame = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].keyFrame;
 				ledKeyFrame.clear();
@@ -257,9 +262,9 @@ public:
 					float first = kf[0].as<float>();
 					float second = kf[1].as<float>();
 					ledKeyFrame.emplace_back(first, second);
-					Serial.print(String(first) + "," + String(second) + " ");
+					Print(String(first) + "," + String(second) + " ");
 				}
-				Serial.println();
+				Println();
 			}
 			if (animationObj["color"].is<JsonArray>()) {
 				JsonArray josnInput = animationObj["color"].as<JsonArray>();
@@ -270,29 +275,29 @@ public:
 					// Convert hex string to uint32_t
 					uint32_t color = (uint32_t)strtol(colorStr.c_str(), nullptr, 16);
 					ledColor.push_back(color);
-					Serial.print(ledColor.back(), HEX);
-					Serial.print(" ");
+					Print(ledColor.back(), HEX);
+					Print(" ");
 				}
-				Serial.println();
+				Println();
 			}
 		}
 
 		// Parse brightness
 		if (inputJson["brightness"].is<float>()) {
 			LED_CHARACTERISTIC_UUID[uuidIndex].brightness = inputJson["brightness"].as<float>();
-			Serial.println("LED Brightness: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].brightness));
+			Println("LED Brightness: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].brightness));
 		}
 
 		// Parse delay
 		if (inputJson["delay"].is<int>()) {
 			LED_CHARACTERISTIC_UUID[uuidIndex].animationDelay = inputJson["delay"].as<int>();
-			Serial.println("LED Animation Delay: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].animationDelay));
+			Println("LED Animation Delay: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].animationDelay));
 		}
 
 		// Phrase animation duration
 		if (inputJson["duration"].is<int>()) {
 			LED_CHARACTERISTIC_UUID[uuidIndex].animationDuration = inputJson["duration"].as<int>();
-			Serial.println("LED Animation Duration: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].animationDuration));
+			Println("LED Animation Duration: " + String(LED_CHARACTERISTIC_UUID[uuidIndex].animationDuration));
 		}
     }
 };
@@ -300,13 +305,20 @@ public:
 // Handles server connection events
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) override {
-        Serial.println("Device connected");
+        Println("Device connected");
     }
 
     void onDisconnect(BLEServer* pServer) override {
-        Serial.println("Device disconnected, restarting advertising");
+        Println("Device disconnected, restarting advertising");
         BLEDevice::startAdvertising(); // Restart advertising
     }
+
+	void onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) override {
+		uint16_t mtu = param->mtu.mtu;
+		Print("MTU : ");
+		Println(mtu);
+		pServer->updatePeerMTU(pServer->getConnId(), mtu);
+	}
 };
 
 void setup() {
@@ -321,8 +333,8 @@ void setup() {
 	ledStrip2.show(); // Initialize all pixels to 'off'
 
 	// Initialize BLE device with a device name
-	BLEDevice::setMTU(517);
 	BLEDevice::init("MyFanDevice");
+	BLEDevice::setMTU(517);
 
 	// Create BLE Server
 	pServer = BLEDevice::createServer();
@@ -336,10 +348,10 @@ void setup() {
 
 	// Create Characteristics inside the Service
 	for (int i=0; i<FAN_CHARACTERISTIC_UUID.size(); ++i) {
-		Serial.println(("Creating Fan Characteristic: " + FAN_CHARACTERISTIC_UUID[i].uuid).c_str());
+		Println(("Creating Fan Characteristic: " + FAN_CHARACTERISTIC_UUID[i].uuid).c_str());
 		pFanCharacteristics[i] = pFanService->createCharacteristic(
 			FAN_CHARACTERISTIC_UUID[i].uuid,
-			BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+			BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_NOTIFY
 		);
 		
 		// BLEDescriptor* userDesc = new BLEDescriptor(BLEUUID((uint16_t)0x2901));
@@ -352,10 +364,10 @@ void setup() {
 	}
 
 	for (int i = 0; i < LED_CHARACTERISTIC_UUID.size(); ++i) {
-		Serial.println(("Creating LED Characteristic: " + LED_CHARACTERISTIC_UUID[i].uuid).c_str());
+		Println(("Creating LED Characteristic: " + LED_CHARACTERISTIC_UUID[i].uuid).c_str());
 		pLedCharacteristics[i] = pLedService->createCharacteristic(
 			LED_CHARACTERISTIC_UUID[i].uuid,
-			BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+			BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_NOTIFY
 		);
 
 		// BLEDescriptor* userDesc = new BLEDescriptor(BLEUUID((uint16_t)0x2901));
@@ -380,7 +392,7 @@ void setup() {
 
 	pAdvertising->start();
 
-	Serial.println("BLE Service started, waiting for clients to connect...");
+	Println("BLE Service started, waiting for clients to connect...");
 
 	// Initalize FAN
 	for (int i = 0; i < FAN_CHARACTERISTIC_UUID.size(); i++) {
