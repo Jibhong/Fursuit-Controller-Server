@@ -11,10 +11,12 @@
 
 #include <ArduinoJson.h>
 
-bool debugEnabled = false; // Toggle this to enable/disable printing
+bool debugEnabled = true; // Toggle this to enable/disable printing
 
 #define Print(...)    if (debugEnabled) Serial.print(__VA_ARGS__)
 #define Println(...)  if (debugEnabled) Serial.println(__VA_ARGS__)
+
+const size_t MAX_ANIMATION_CHANNELS = 10; // Maximum number of animation channels per LED strip 
 
 typedef struct fan_settings {
 	const std::string uuid;
@@ -27,6 +29,7 @@ typedef struct fan_settings {
 typedef struct animation_container{
 	std::vector<std::pair<float,float>> keyFrame; // pairs of (p1,p2) for the animation
 	std::vector<uint32_t> color; // colors for the animation, stored as hex values (0xRRGGBB)
+	animation_container() = default;
 } AnimationContainer;
 
 typedef struct led_settings {
@@ -35,13 +38,15 @@ typedef struct led_settings {
 	const int stripLength;
 	Adafruit_NeoPixel& strip; // Adafruit_NeoPixel instance for controlling the LEDs
 
-	std::vector<AnimationContainer> animation;
+	AnimationContainer animation[MAX_ANIMATION_CHANNELS];
 	float brightness; //brightness multiplier (0.0-3.0)
 	int animationDuration; //total duration of the animation in milliseconds
 	float animationDelay; //delay between animation frames in milliseconds
 
 	std::vector<uint32_t> nowFrame;
 	unsigned int microFrameDelay;
+
+	led_settings() = default;
 
 } LedSettings;
 
@@ -175,6 +180,7 @@ void generateFrame(LedSettings &led, float t) {
 	led.nowFrame.clear(); // Clear the nowFrame vector
 	led.nowFrame.resize(led.stripLength, 0x000000); // Initialize the frame with black color
 	for(AnimationContainer &toFill:led.animation){
+		if(toFill.keyFrame.empty() || toFill.color.empty()) continue; // Skip if no keyframes or colors are defined
 		int nowIndex = (float)(toFill.keyFrame.size()-1) * t;
 		// Println(String("Now Index: ") + String(nowIndex) + " t: " + String(t) + " keyFrame size: " + String(toFill.keyFrame.size()));
 		float nowPercent = t*(float)(toFill.keyFrame.size()-1) - nowIndex;
@@ -210,77 +216,84 @@ class LedCharacteristicCallback : public BLECharacteristicCallbacks {
 public:
     explicit LedCharacteristicCallback(const std::string& uuid_) : uuid(uuid_) {}
 
-    void onWrite(BLECharacteristic* pCharacteristic) override {
-        std::string inputString = pCharacteristic->getValue();
+		void onWrite(BLECharacteristic* pCharacteristic) override {
+			std::string inputString = pCharacteristic->getValue();
 
-        Print("LED ");
-        Print(uuid.c_str());
-        Print(": ");
+			Print("LED ");
+			Print(uuid.c_str());
+			Print(": ");
 
-        for (char c : inputString) {
-            Print(c);
-        }
-        Println();
-
-		int uuidIndex = -1; // Assuming handle starts from 1
-		for(int i = 0; i < LED_CHARACTERISTIC_UUID.size(); ++i) {
-			if (LED_CHARACTERISTIC_UUID[i].uuid != uuid) continue;
-			uuidIndex = i;
-			break;
-		}
-		if(uuidIndex == -1) {
-			Println("ERROR: LED Characteristic not found");
-			return;
-		}
-		Println("LED Characteristic Index: " + String(uuidIndex));
-
-		// {animation:{{0xFF0000, 0x00FF00, 0x0000FF},{0xFFFF00, 0xFF00FF, 0x00FFFF}}, brightness: 1.0, delay: 300};
-		// Parse input as JSON and update LED settings
-		JsonDocument inputJson;
-		DeserializationError error = deserializeJson(inputJson, inputString);
-		if (error) {
-			Print("JSON parse failed: ");
-			Println(error.c_str());
-			return;
-		}
-
-		// {animation:[channel:0, keyFrame:[[0.0,1.0],[0,5,1.0],[0.0,0.5]]]}
-		// {animation:[channel:0, color:["ff0000", "00ff00", "0000ff"]]}
-		// Parse animation array (channel is inside animation object)
-		if (inputJson["animation"].is<JsonObject>()) {
-			JsonObject animationObj = inputJson["animation"].as<JsonObject>();
-			int channelIndex = 0;
-			if (!animationObj["channel"].is<int>()) channelIndex = animationObj["channel"].as<int>();
-			Println("channel: " + String(channelIndex));
-			if (animationObj["keyframe"].is<JsonArray>()) {
-				Println("keyframe found");
-				JsonArray jsonInput = animationObj["keyframe"].as<JsonArray>();
-				std::vector<std::pair<float, float>> &ledKeyFrame = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].keyFrame;
-				ledKeyFrame.clear();
-				for (JsonArray kf : jsonInput) {
-					if (kf.size() != 2) continue;
-					float first = kf[0].as<float>();
-					float second = kf[1].as<float>();
-					ledKeyFrame.emplace_back(first, second);
-					Print(String(first) + "," + String(second) + " ");
-				}
-				Println();
+			for (char c : inputString) {
+				Print(c);
 			}
-			if (animationObj["color"].is<JsonArray>()) {
-				JsonArray josnInput = animationObj["color"].as<JsonArray>();
-				std::vector<uint32_t> &ledColor = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].color;
-				ledColor.clear();
-				for (JsonVariant v : josnInput) {
-					std::string colorStr = v.as<const char*>();
-					// Convert hex string to uint32_t
-					uint32_t color = (uint32_t)strtol(colorStr.c_str(), nullptr, 16);
-					ledColor.push_back(color);
-					Print(ledColor.back(), HEX);
-					Print(" ");
-				}
-				Println();
+			Println();
+
+			int uuidIndex = -1; // Assuming handle starts from 1
+			for(int i = 0; i < LED_CHARACTERISTIC_UUID.size(); ++i) {
+				if (LED_CHARACTERISTIC_UUID[i].uuid != uuid) continue;
+				uuidIndex = i;
+				break;
 			}
-		}
+			if(uuidIndex == -1) {
+				Println("ERROR: LED Characteristic not found");
+				return;
+			}
+			Println("LED Characteristic Index: " + String(uuidIndex));
+
+			// {animation:{{0xFF0000, 0x00FF00, 0x0000FF},{0xFFFF00, 0xFF00FF, 0x00FFFF}}, brightness: 1.0, delay: 300};
+			// Parse input as JSON and update LED settings
+			JsonDocument inputJson;
+			DeserializationError error = deserializeJson(inputJson, inputString);
+			if (error) {
+				Print("JSON parse failed: ");
+				Println(error.c_str());
+				return;
+			}
+
+			// {animation:[channel:0, keyFrame:[[0.0,1.0],[0,5,1.0],[0.0,0.5]]]}
+			// {animation:[channel:0, color:["ff0000", "00ff00", "0000ff"]]}
+			// Parse animation array (channel is inside animation object)
+			if (inputJson["animation"].is<JsonObject>()) {
+				JsonObject animationObj = inputJson["animation"].as<JsonObject>();
+				int channelIndex = -1;
+				if (animationObj["channel"].is<int>()) channelIndex = animationObj["channel"].as<int>();
+				Println("channel: " + String(channelIndex));
+				if (channelIndex<0 || channelIndex >= MAX_ANIMATION_CHANNELS) {
+					Println("ERROR: Invalid channel index");
+					return;
+				}
+				auto &animVec = LED_CHARACTERISTIC_UUID[uuidIndex].animation;
+				size_t requiredSize = static_cast<size_t>(channelIndex + 1);
+				if (animationObj["keyframe"].is<JsonArray>()) {
+					Println("keyframe found");
+					JsonArray jsonInput = animationObj["keyframe"].as<JsonArray>();
+					std::vector<std::pair<float, float>> &ledKeyFrame = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].keyFrame;
+					ledKeyFrame.clear();
+					for (JsonArray kf : jsonInput) {
+						if (kf.size() != 2) continue;
+						float first = kf[0].as<float>();
+						float second = kf[1].as<float>();
+						ledKeyFrame.emplace_back(first, second);
+						Print(String(first) + "," + String(second) + " ");
+					}
+					Println();
+				}
+				
+				if (animationObj["color"].is<JsonArray>()) {
+					JsonArray josnInput = animationObj["color"].as<JsonArray>();
+					std::vector<uint32_t> &ledColor = LED_CHARACTERISTIC_UUID[uuidIndex].animation[channelIndex].color;
+					ledColor.clear();
+					for (JsonVariant v : josnInput) {
+						std::string colorStr = v.as<const char*>();
+						// Convert hex string to uint32_t
+						uint32_t color = (uint32_t)strtol(colorStr.c_str(), nullptr, 16);
+						ledColor.push_back(color);
+						Print(ledColor.back(), HEX);
+						Print(" ");
+					}
+					Println();
+				}
+			}
 
 		// Parse brightness
 		if (inputJson["brightness"].is<float>()) {
